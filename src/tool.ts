@@ -310,6 +310,9 @@ async function captureFlow(deps: ToolDeps, args: Record<string, unknown>): Promi
   // the element walk bound keeps dense trees bounded in TIME (spec).
   callArgs.max_dimension = 1568
   callArgs.max_elements = Math.max(50, Math.min(1000, deps.maxElements ?? 200))
+  // The driver defaults to a Markdown-only tree; the plugin needs the
+  // structured elements (and their element_tokens) to address later actions.
+  callArgs.tree_format = "elements"
   const res = await s.call("get_window_state", callArgs, timeoutFor("get_window_state"))
   if (!res.isError) {
     const structured = (res.structured ?? {}) as { snapshot_id?: unknown; elements?: Array<{ element_index?: number; element_token?: string }> }
@@ -433,9 +436,10 @@ async function inputFlow(deps: ToolDeps, action: Action, args: Record<string, un
         error: `element [${elementIndex}] has no snapshot token for window ${windowId} — the reference predates the last capture or the driver restarted. capture again and use a fresh [index].`,
       })
     }
-    callArgs.element_index = elementIndex
-    callArgs.element_token = token.elementToken
-    callArgs.snapshot_id = token.snapshotId
+    const accepts = (arg: string) => s.acceptsArg(action, arg) !== false
+    if (accepts("element_index")) callArgs.element_index = elementIndex
+    if (accepts("element_token")) callArgs.element_token = token.elementToken
+    if (accepts("snapshot_id")) callArgs.snapshot_id = token.snapshotId
   }
   if (args.from_zoom === true) callArgs.from_zoom = true
   switch (action) {

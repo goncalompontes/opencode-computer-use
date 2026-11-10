@@ -129,6 +129,12 @@ export class ComputerSession {
    * invalidates the sticky target (element refs minted by the dead transport
    * are worthless) and the next call lazily respawns.
    */
+  /** Whether the current driver schema accepts an argument (undefined when unknown). */
+  acceptsArg(tool: string, arg: string): boolean | undefined {
+    const properties = this.client?.serverToolSchemas[tool]?.properties
+    return properties ? properties[arg] !== undefined : undefined
+  }
+
   async call(tool: string, args: Record<string, unknown>, timeoutMs?: number): Promise<CallResult> {
     // Single-flight: capture-then-act ordering and sticky-target integrity.
     // The work is created INSIDE the chain, so it starts only when the

@@ -48,11 +48,13 @@ class FakeTransport {
   }
 }
 
-function scriptedTransport({ tools = REQUIRED_TOOLS, calls = {} } = {}) {
+function scriptedTransport({ tools = REQUIRED_TOOLS, calls = {}, schemas = {} } = {}) {
   const t = new FakeTransport()
   t.script = {
     initialize: () => ({ serverInfo: { name: "cua-driver", version: "0.28.2" } }),
-    "tools/list": () => ({ tools: tools.map((name) => ({ name })) }),
+    "tools/list": () => ({
+      tools: tools.map((name) => ({ name, ...(schemas[name] ? { inputSchema: schemas[name] } : {}) })),
+    }),
     "tools/call": (p) => calls[p.name]?.(p.arguments) ?? { content: [{ type: "text", text: "ok" }] },
   }
   return t
@@ -119,10 +121,18 @@ function toolRig(overrides = {}) {
 test("1.1 buildChildEnv: whitelist keeps system essentials, drops credentials", () => {
   process.env.FORGE_TEST_FAKE_API_KEY = "sk-super-secret"
   process.env.OPENAI_API_KEY = "sk-leak-me"
+  process.env.WAYLAND_DISPLAY = "wayland-1"
+  process.env.XDG_RUNTIME_DIR = "/run/user/1000"
+  process.env.NIRI_SOCKET = "/run/user/1000/niri.wayland-1.sock"
+  process.env.CUA_DRIVER_RS_ENABLE_WAYLAND = "1"
   const env = buildChildEnv({ CUA_DRIVER_RS_TELEMETRY_ENABLED: "0" })
   assert.equal(env.FORGE_TEST_FAKE_API_KEY, undefined, "injected credential must not pass")
   assert.equal(env.OPENAI_API_KEY, undefined, "provider key must not pass")
   assert.equal(env.CUA_DRIVER_RS_TELEMETRY_ENABLED, "0")
+  assert.equal(env.WAYLAND_DISPLAY, "wayland-1", "Wayland display reaches the driver")
+  assert.equal(env.XDG_RUNTIME_DIR, "/run/user/1000", "session runtime dir reaches the driver")
+  assert.equal(env.NIRI_SOCKET, "/run/user/1000/niri.wayland-1.sock", "niri IPC socket reaches the driver")
+  assert.equal(env.CUA_DRIVER_RS_ENABLE_WAYLAND, "1", "native-Wayland opt-in reaches the driver")
   if (process.platform === "win32") {
     assert.ok(env.SystemRoot || env.SYSTEMROOT, "SystemRoot survives (driver needs it)")
     assert.ok(env.ComSpec, "ComSpec survives (shell resolution)")
@@ -184,6 +194,19 @@ test("2.1 element actions carry snapshot_id + element_token minted by the captur
   assert.equal(clickArgs.element_token, "tok-3", "token rides along")
   assert.equal(clickArgs.snapshot_id, "snap-1", "snapshot identity rides along")
   assert.equal(clickArgs.element_index, 3)
+})
+
+test("2.2 element actions only send arguments the driver schema accepts", async () => {
+  let clickArgs = null
+  const { t, ctx } = toolRig({
+    schemas: { click: { properties: { pid: {}, window_id: {}, element_token: {} } } },
+    calls: { ...SNAP, click: (a) => ((clickArgs = a), { content: [{ type: "text", text: "" }], structuredContent: { ok: true, effect: "confirmed" } }) },
+  })
+  await run(t, { action: "capture", pid: 5, window_id: 9 }, ctx)
+  await run(t, { action: "click", element_index: 3 }, ctx)
+  assert.equal(clickArgs.element_token, "tok-3")
+  assert.equal(clickArgs.element_index, undefined, "a driver that removed element_index never receives it")
+  assert.equal(clickArgs.snapshot_id, undefined, "a driver that removed snapshot_id never receives it")
 })
 
 test("2.1 a bare index without a snapshot token is refused as unaddressable, never dispatched", async () => {

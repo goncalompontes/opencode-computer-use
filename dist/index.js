@@ -9733,7 +9733,25 @@ var ENV_WHITELIST = [
   "USERNAME",
   "NUMBER_OF_PROCESSORS",
   "PROCESSOR_ARCHITECTURE",
-  "OS"
+  "OS",
+  "XDG_RUNTIME_DIR",
+  "XDG_SESSION_TYPE",
+  "XDG_SESSION_DESKTOP",
+  "XDG_CURRENT_DESKTOP",
+  "WAYLAND_DISPLAY",
+  "DISPLAY",
+  "XAUTHORITY",
+  "DBUS_SESSION_BUS_ADDRESS",
+  "AT_SPI_BUS_ADDRESS",
+  "SWAYSOCK",
+  "I3SOCK",
+  "NIRI_SOCKET",
+  "HYPRLAND_INSTANCE_SIGNATURE",
+  "KDE_FULL_SESSION",
+  "CUA_DRIVER_RS_ENABLE_WAYLAND",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE"
 ];
 function buildChildEnv(extra) {
   const out = {};
@@ -9795,6 +9813,7 @@ class McpClient {
   opts;
   crashed = false;
   serverTools = [];
+  serverToolSchemas = {};
   serverInfo = null;
   constructor(transport, opts) {
     this.transport = transport;
@@ -9859,7 +9878,9 @@ class McpClient {
     this.serverInfo = result?.serverInfo ?? null;
     this.notify("notifications/initialized");
     const tools = await this.request("tools/list", {}, timeoutMs);
-    this.serverTools = Array.isArray(tools?.tools) ? tools.tools.map((t) => String(t?.name ?? "")).filter(Boolean) : [];
+    const listed = Array.isArray(tools?.tools) ? tools.tools : [];
+    this.serverTools = listed.map((t) => String(t?.name ?? "")).filter(Boolean);
+    this.serverToolSchemas = Object.fromEntries(listed.filter((t) => typeof t?.name === "string").map((t) => [String(t.name), t.inputSchema ?? {}]));
   }
   missingTools(required) {
     return required.filter((t) => !this.serverTools.includes(t));
@@ -10048,6 +10069,10 @@ class ComputerSession {
       });
     }
     await this.startPromise;
+  }
+  acceptsArg(tool, arg) {
+    const properties = this.client?.serverToolSchemas[tool]?.properties;
+    return properties ? properties[arg] !== undefined : undefined;
   }
   async call(tool, args, timeoutMs) {
     const run = this.queue.then(() => this.doCall(tool, args, timeoutMs), () => this.doCall(tool, args, timeoutMs));
@@ -13844,6 +13869,7 @@ async function captureFlow(deps, args) {
     callArgs.include_accessibility_tree = false;
   callArgs.max_dimension = 1568;
   callArgs.max_elements = Math.max(50, Math.min(1000, deps.maxElements ?? 200));
+  callArgs.tree_format = "elements";
   const res = await s.call("get_window_state", callArgs, timeoutFor("get_window_state"));
   if (!res.isError) {
     const structured = res.structured ?? {};
@@ -13959,9 +13985,13 @@ async function inputFlow(deps, action, args) {
         error: `element [${elementIndex}] has no snapshot token for window ${windowId} — the reference predates the last capture or the driver restarted. capture again and use a fresh [index].`
       });
     }
-    callArgs.element_index = elementIndex;
-    callArgs.element_token = token.elementToken;
-    callArgs.snapshot_id = token.snapshotId;
+    const accepts = (arg) => s.acceptsArg(action, arg) !== false;
+    if (accepts("element_index"))
+      callArgs.element_index = elementIndex;
+    if (accepts("element_token"))
+      callArgs.element_token = token.elementToken;
+    if (accepts("snapshot_id"))
+      callArgs.snapshot_id = token.snapshotId;
   }
   if (args.from_zoom === true)
     callArgs.from_zoom = true;
@@ -14227,7 +14257,7 @@ function makeStatusTool(deps) {
         ready: deps.ready,
         driver: deps.resolved,
         version: deps.version,
-        contract: { min: "0.28.0", testedAgainst: "0.28.2" },
+        contract: { min: "0.28.0", testedAgainst: "0.44.0" },
         session: deps.sessionId,
         ...health ? { health } : {},
         ...deps.ready ? {} : { problem: deps.reason, remediation: deps.installHint },
