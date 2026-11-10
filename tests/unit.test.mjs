@@ -18,11 +18,12 @@ test("override env is authoritative and a broken override fails naming it", () =
 test("resolution order: PATH before canonical locations, platform-specific candidates", () => {
   const viaPath = resolveDriverCmd({ env: {}, which: (c) => (c === "cua-driver" ? "/usr/bin/cua-driver" : undefined), exists: () => false })
   assert.equal(viaPath.source, "path")
+  const canonical = canonicalCandidates("linux")[0]
   const viaCanonical = resolveDriverCmd({
     env: {},
-    platform: "win32",
+    platform: "linux",
     which: () => undefined,
-    exists: (p) => p.endsWith("Programs\\Cua\\cua-driver\\bin\\cua-driver.exe"),
+    exists: (p) => p === canonical,
   })
   assert.equal(viaCanonical.source, "canonical")
   const none = resolveDriverCmd({ env: {}, which: () => undefined, exists: () => false })
