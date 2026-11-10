@@ -1,9 +1,18 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { DRIVER_CMD_ENV, canonicalCandidates, resolveDriverCmd, userInstallHint } from "../src/driver-resolve.ts"
+import { driverEnv } from "../src/session.ts"
 import { CONTRACT_MIN_VERSION, checkContract, manifestContractReason, parseSemver } from "../src/contract.ts"
 import { blockedKeyReason, blockedTypeReason, canonKeyCombo, inputTargetMismatch, mapVerdict } from "../src/safety.ts"
 import { buildCaptureResult, renderElements, MAX_ELEMENTS } from "../src/capture.ts"
+
+// ── 2.0 driver child environment ───────────────────────────────────────────
+
+test("driver env enables native Wayland unless explicitly disabled", () => {
+  assert.equal(driverEnv({ WAYLAND_DISPLAY: "wayland-1" }).CUA_DRIVER_RS_ENABLE_WAYLAND, "1")
+  assert.equal(driverEnv({ WAYLAND_DISPLAY: "wayland-1", CUA_DRIVER_RS_ENABLE_WAYLAND: "0" }).CUA_DRIVER_RS_ENABLE_WAYLAND, undefined)
+  assert.equal(driverEnv({}).CUA_DRIVER_RS_ENABLE_WAYLAND, undefined)
+})
 
 // ── 2.1 driver resolution ──────────────────────────────────────────────────
 

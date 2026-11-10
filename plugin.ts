@@ -14,7 +14,7 @@ import { appendFileSync, existsSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { tmpdir } from "node:os"
-import { resolveDriverCmd, userInstallHint } from "./src/driver-resolve.ts"
+import { DRIVER_CMD_ENV, resolveDriverCmd, userInstallHint } from "./src/driver-resolve.ts"
 import { checkContract, type ContractResult } from "./src/contract.ts"
 import { ComputerSession } from "./src/session.ts"
 import { makeComputerTool, makeStatusTool, type PermissionAsk } from "./src/tool.ts"
@@ -36,10 +36,11 @@ export function _testInjectProbe(r: ContractResult | null): void {
   probeOverride = r
   probeCache = null
 }
-function probeOnce(): ContractResult {
+function probeOnce(driverPath?: string): ContractResult {
   if (probeOverride) return probeOverride
   if (probeCache) return probeCache
-  const resolved = resolveDriverCmd()
+  const env = driverPath ? { ...process.env, [DRIVER_CMD_ENV]: driverPath } : undefined
+  const resolved = resolveDriverCmd(env ? { env } : {})
   const contract = checkContract(resolved)
   probeLine(`probe resolved=${resolved.cmd ?? "null"} ready=${contract.ready} reason=${contract.reason}`)
   probeCache = contract
@@ -73,14 +74,16 @@ type ComputerUseOptions = {
   maxElements?: unknown
   /** "ask" (default) adds per-session ask rules; "config" leaves rules alone. */
   permissionMode?: unknown
+  /** Explicit cua-driver binary; otherwise PATH then the installer's locations. */
+  driverPath?: unknown
 }
 
 export default Plugin.define({
   id: "computer-use",
   async setup(ctx) {
-    const contract = probeOnce()
-    const installHint = userInstallHint()
     const pluginOptions = (ctx.options as { computerUse?: ComputerUseOptions } | undefined)?.computerUse ?? {}
+    const contract = probeOnce(typeof pluginOptions.driverPath === "string" ? pluginOptions.driverPath : undefined)
+    const installHint = userInstallHint()
     const captureAfter: "off" | "som" | "ax" =
       pluginOptions.captureAfter === "som" || pluginOptions.captureAfter === "ax" ? pluginOptions.captureAfter : "off"
     const agentCursor = pluginOptions.agentCursor === true

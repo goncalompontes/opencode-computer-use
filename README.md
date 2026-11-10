@@ -164,9 +164,12 @@ permission rules entirely to your configuration.
 The foreground domain is separate: a background approval never covers
 raising a window or `delivery_mode: "foreground"`.
 
-- `OPENCODE_CUA_DRIVER_CMD` — point at a specific driver binary. Authoritative:
-  if it is wrong, readiness fails naming it; the plugin never silently picks
-  another binary.
+- `computerUse.driverPath` (or `OPENCODE_CUA_DRIVER_CMD`) — point at a specific
+  driver binary. Authoritative: if it is wrong, readiness fails naming it; the
+  plugin never silently picks another binary.
+- On Wayland the plugin passes `CUA_DRIVER_RS_ENABLE_WAYLAND=1` to its driver
+  child automatically (unless you set it to `0`), so native Wayland works
+  without exporting the variable in the OpenCode service environment.
 - Telemetry: the plugin spawns the driver with
   `CUA_DRIVER_RS_TELEMETRY_ENABLED=0` (the driver phones home by default —
   this turns it off for plugin-spawned sessions).

@@ -9989,7 +9989,14 @@ function mapVerdict(f) {
 }
 
 // src/session.ts
-var TELEMETRY_ENV = { CUA_DRIVER_RS_TELEMETRY_ENABLED: "0" };
+function driverEnv(env = process.env) {
+  const out = { CUA_DRIVER_RS_TELEMETRY_ENABLED: "0" };
+  if (env.WAYLAND_DISPLAY && env.CUA_DRIVER_RS_ENABLE_WAYLAND !== "0") {
+    out.CUA_DRIVER_RS_ENABLE_WAYLAND = "1";
+  }
+  return out;
+}
+var TELEMETRY_ENV = driverEnv();
 var REQUIRED_TOOLS = [
   "start_session",
   "end_session",
@@ -14287,12 +14294,13 @@ function _testInjectProbe(r) {
   probeOverride = r;
   probeCache = null;
 }
-function probeOnce() {
+function probeOnce(driverPath) {
   if (probeOverride)
     return probeOverride;
   if (probeCache)
     return probeCache;
-  const resolved = resolveDriverCmd();
+  const env = driverPath ? { ...process.env, [DRIVER_CMD_ENV]: driverPath } : undefined;
+  const resolved = resolveDriverCmd(env ? { env } : {});
   const contract = checkContract(resolved);
   probeLine(`probe resolved=${resolved.cmd ?? "null"} ready=${contract.ready} reason=${contract.reason}`);
   probeCache = contract;
@@ -14316,9 +14324,9 @@ function bundledSkillFile() {
 var plugin_default = define({
   id: "computer-use",
   async setup(ctx) {
-    const contract = probeOnce();
-    const installHint = userInstallHint();
     const pluginOptions = ctx.options?.computerUse ?? {};
+    const contract = probeOnce(typeof pluginOptions.driverPath === "string" ? pluginOptions.driverPath : undefined);
+    const installHint = userInstallHint();
     const captureAfter = pluginOptions.captureAfter === "som" || pluginOptions.captureAfter === "ax" ? pluginOptions.captureAfter : "off";
     const agentCursor = pluginOptions.agentCursor === true;
     const maxElements = typeof pluginOptions.maxElements === "number" ? Math.max(50, Math.min(1000, Math.floor(pluginOptions.maxElements))) : 200;

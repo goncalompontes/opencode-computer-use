@@ -9,7 +9,16 @@
 import { McpClient, childTransport, type CallResult, type McpTransport } from "./mcp-client.ts"
 import { inputTargetMismatch, type StickyTarget } from "./safety.ts"
 
-export const TELEMETRY_ENV = { CUA_DRIVER_RS_TELEMETRY_ENABLED: "0" }
+/** Driver child environment: telemetry off, and native Wayland when the host is on it. */
+export function driverEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const out: Record<string, string> = { CUA_DRIVER_RS_TELEMETRY_ENABLED: "0" }
+  if (env.WAYLAND_DISPLAY && env.CUA_DRIVER_RS_ENABLE_WAYLAND !== "0") {
+    out.CUA_DRIVER_RS_ENABLE_WAYLAND = "1"
+  }
+  return out
+}
+
+export const TELEMETRY_ENV = driverEnv()
 
 // The MCP tool names this integration consumes (checked at first connect).
 export const REQUIRED_TOOLS = [
