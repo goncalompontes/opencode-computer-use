@@ -74,6 +74,8 @@ type ComputerUseOptions = {
   maxElements?: unknown
   /** "ask" (default) adds per-session ask rules; "config" leaves rules alone. */
   permissionMode?: unknown
+  /** "session" (default) grants after the first approval; "each" asks every action. */
+  approval?: unknown
   /** Explicit cua-driver binary; otherwise PATH then the installer's locations. */
   driverPath?: unknown
 }
@@ -90,6 +92,7 @@ export default Plugin.define({
     const maxElements =
       typeof pluginOptions.maxElements === "number" ? Math.max(50, Math.min(1000, Math.floor(pluginOptions.maxElements))) : 200
     const permissionMode = pluginOptions.permissionMode === "config" ? "config" : "ask"
+    const approvalMode = pluginOptions.approval === "each" ? "each" : "session"
 
     // Lazy session: the MCP child spawns on the first computer tool call, not
     // at host startup (Windows Defender first-scan must never tax boot).
@@ -125,6 +128,20 @@ export default Plugin.define({
       }
     }
 
+    // One approval is for the whole session: after it resolves, add session
+    // allow rules for both domains. "Allow once" therefore means "until this
+    // session ends", not "for this one click".
+    const granted = new Set<string>()
+    const grantSession = async (targetSession: string) => {
+      if (permissionMode === "config" || approvalMode === "each" || granted.has(targetSession)) return
+      granted.add(targetSession)
+      try {
+        await grantSessionApproval(ctx.session, targetSession)
+      } catch (error) {
+        probeLine(`session approval could not be stored: ${(error as Error).message}`)
+      }
+    }
+
     const assertPermission: PermissionAsk = async (input) => {
       await ensureRules(input.sessionID)
       await ctx.permission.assert({
@@ -133,9 +150,10 @@ export default Plugin.define({
         action: input.action,
         resources: ["*"],
         save: ["*"],
-        metadata: { title: input.title, tool: "computer" },
+        metadata: { title: `Allow computer use for this session: ${input.title}`, tool: "computer", scope: "session" },
         source: { type: "tool", messageID: input.messageID, id: input.callID },
       })
+      await grantSession(input.sessionID)
     }
 
     const status = makeStatusTool({
@@ -206,6 +224,25 @@ export default Plugin.define({
     }
   },
 })
+
+type PermissionRule = { action: string; resource: string; effect: "allow" | "deny" | "ask" }
+
+type SessionRulesApi = {
+  get(input: { sessionID: never }): Promise<{ permissions?: readonly PermissionRule[] }>
+  update(input: { sessionID: never; permissions: PermissionRule[] }): Promise<void>
+}
+
+/** Add session-scoped allow rules for both computer-use domains. */
+export async function grantSessionApproval(api: SessionRulesApi, targetSession: string): Promise<void> {
+  const info = await api.get({ sessionID: targetSession as never })
+  const existing = (info.permissions ?? []) as readonly PermissionRule[]
+  const additions = ["computer", "computer:foreground"]
+    .filter((action) => !existing.some((rule) => rule.action === action && rule.resource === "*" && rule.effect === "allow"))
+    .map((action) => ({ action, resource: "*", effect: "allow" as const }))
+  if (additions.length) {
+    await api.update({ sessionID: targetSession as never, permissions: [...existing, ...additions] })
+  }
+}
 
 function extractTextSafe(res: { content: Array<{ type: string; text?: string }> }): string {
   return res.content

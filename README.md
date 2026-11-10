@@ -144,7 +144,8 @@ Per-skill gating uses the V2 permission system:
           "captureAfter": "off",   // "som" | "ax": auto-capture after input actions
           "agentCursor": false,    // driver-side agent-cursor visualization (default off)
           "maxElements": 200,      // driver-side element walk bound (50–1000)
-          "permissionMode": "ask"  // "ask" (default) | "config"
+          "permissionMode": "ask", // "ask" (default) | "config"
+          "approval": "session"    // "session" (default) | "each"
         }
       }
     }
@@ -157,9 +158,11 @@ Per-skill gating uses the V2 permission system:
 ```
 
 With `permissionMode: "ask"` (the default) the plugin adds those two rules
-to each session without replacing your configured rules; "always allow" in
-the approval dialog still saves a durable allow. Use `"config"` to leave
-permission rules entirely to your configuration.
+to each session without replacing your configured rules. With `approval:
+"session"` (the default), the first approval adds session-scoped allow rules
+for both domains, so a single "allow" covers computer use until that session
+ends. Use `"each"` to ask for every action, or `"config"` to leave permission
+rules entirely to your configuration.
 
 The foreground domain is separate: a background approval never covers
 raising a window or `delivery_mode: "foreground"`.

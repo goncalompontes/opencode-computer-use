@@ -14331,6 +14331,7 @@ var plugin_default = define({
     const agentCursor = pluginOptions.agentCursor === true;
     const maxElements = typeof pluginOptions.maxElements === "number" ? Math.max(50, Math.min(1000, Math.floor(pluginOptions.maxElements))) : 200;
     const permissionMode = pluginOptions.permissionMode === "config" ? "config" : "ask";
+    const approvalMode = pluginOptions.approval === "each" ? "each" : "session";
     let session = null;
     const ensureSession = () => {
       if (!session && contract.ready && contract.mcpInvocation) {
@@ -14357,6 +14358,17 @@ var plugin_default = define({
         probeLine(`permission rules unavailable: ${error.message}`);
       }
     };
+    const granted = new Set;
+    const grantSession = async (targetSession) => {
+      if (permissionMode === "config" || approvalMode === "each" || granted.has(targetSession))
+        return;
+      granted.add(targetSession);
+      try {
+        await grantSessionApproval(ctx.session, targetSession);
+      } catch (error) {
+        probeLine(`session approval could not be stored: ${error.message}`);
+      }
+    };
     const assertPermission = async (input) => {
       await ensureRules(input.sessionID);
       await ctx.permission.assert({
@@ -14365,9 +14377,10 @@ var plugin_default = define({
         action: input.action,
         resources: ["*"],
         save: ["*"],
-        metadata: { title: input.title, tool: "computer" },
+        metadata: { title: `Allow computer use for this session: ${input.title}`, tool: "computer", scope: "session" },
         source: { type: "tool", messageID: input.messageID, id: input.callID }
       });
+      await grantSession(input.sessionID);
     };
     const status = makeStatusTool({
       ready: contract.ready,
@@ -14423,11 +14436,20 @@ var plugin_default = define({
     };
   }
 });
+async function grantSessionApproval(api, targetSession) {
+  const info = await api.get({ sessionID: targetSession });
+  const existing = info.permissions ?? [];
+  const additions = ["computer", "computer:foreground"].filter((action) => !existing.some((rule) => rule.action === action && rule.resource === "*" && rule.effect === "allow")).map((action) => ({ action, resource: "*", effect: "allow" }));
+  if (additions.length) {
+    await api.update({ sessionID: targetSession, permissions: [...existing, ...additions] });
+  }
+}
 function extractTextSafe(res) {
   return res.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join(`
 `).slice(0, 300);
 }
 export {
   _testInjectProbe,
-  plugin_default as default
+  plugin_default as default,
+  grantSessionApproval
 };

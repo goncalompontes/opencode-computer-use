@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events"
 import { McpClient } from "../src/mcp-client.ts"
 import { ComputerSession, REQUIRED_TOOLS, TELEMETRY_ENV, targetRefusal } from "../src/session.ts"
 import { makeComputerTool, makeStatusTool } from "../src/tool.ts"
-import plugin, { _testInjectProbe } from "../plugin.ts"
+import plugin, { _testInjectProbe, grantSessionApproval } from "../plugin.ts"
 
 function textOf(result) {
   if (typeof result === "string") return result
@@ -400,6 +400,24 @@ function fakePluginCtx(options = {}) {
   }
   return { ctx, tools, skills, permissions }
 }
+
+test("session approval adds allow rules once, covering both domains", async () => {
+  const updates = []
+  const api = {
+    get: async () => ({ permissions: [{ action: "computer", resource: "*", effect: "ask" }] }),
+    update: async (input) => updates.push(input),
+  }
+  await grantSessionApproval(api, "s1")
+  assert.equal(updates.length, 1)
+  assert.deepEqual(updates[0].permissions.slice(-2), [
+    { action: "computer", resource: "*", effect: "allow" },
+    { action: "computer:foreground", resource: "*", effect: "allow" },
+  ])
+  const rules = updates[0].permissions
+  updates.length = 0
+  await grantSessionApproval({ get: async () => ({ permissions: rules }), update: async (input) => updates.push(input) }, "s1")
+  assert.equal(updates.length, 0, "already allowed sessions are not rewritten")
+})
 
 test("plugin assembly: ready registers computer+status and the skill; guide registers only status", async () => {
   _testInjectProbe({
